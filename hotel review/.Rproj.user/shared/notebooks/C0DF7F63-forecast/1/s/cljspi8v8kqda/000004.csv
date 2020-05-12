@@ -1,0 +1,5 @@
+"0","hotel <- hotel %>% "
+"0","  unite(""arrival_date"", arrival_date_year, arrival_date_month, arrival_date_day_of_month, sep = ""-"") %>% "
+"0","  mutate(arrival_date = ymd(arrival_date))"
+"0",""
+"0","head(hotel)"

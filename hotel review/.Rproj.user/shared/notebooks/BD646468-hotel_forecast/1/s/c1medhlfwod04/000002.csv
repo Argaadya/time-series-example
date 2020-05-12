@@ -1,0 +1,6 @@
+"0","forecast_map <- map2(train_crossing$data, train_crossing$season_spec, ~exec(.y,.x)) %>% 
+  map2(train_crossing$model_spec, ~exec(.y,.x)) %>% 
+  map(forecast, h = 30)
+"
+"2","optimization difficulties: ERROR: ABNORMAL_TERMINATION_IN_LNSRCH"
+"2","optimization difficulties: ERROR: ABNORMAL_TERMINATION_IN_LNSRCH"

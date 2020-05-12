@@ -1,0 +1,8 @@
+"0","hotel_msts <- msts(hotel_agg_resort$demand, seasonal.periods = c(7, 7*4))"
+"0",""
+"0","hotel_msts_decompose <- hotel_msts %>% "
+"0","  mstl() "
+"0",""
+"0","hotel_msts_decompose %>% "
+"0","  autoplot() +"
+"0","  theme_pander()"

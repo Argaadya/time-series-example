@@ -1,0 +1,3 @@
+"0","hotel <- read.csv(""hotel_bookings.csv"")"
+"0",""
+"0","head(hotel, 10)"
