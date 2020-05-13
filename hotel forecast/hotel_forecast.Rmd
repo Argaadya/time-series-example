@@ -15,6 +15,8 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.align = "center", warning = F, message = F)
+
+options(scipen = 999)
 ```
 
 # Background
@@ -40,6 +42,7 @@ library(tseries)
 library(padr)
 library(rsample)
 library(scales)
+library(recipes)
 ```
 
 # Hotel Demand Forecasting
@@ -251,6 +254,120 @@ hotel_pad %>%
 
 The behaviour for each segment is quite different, so we will forecast them separately. At this point, we will have 6 different time series to be forecasted for 3 different segments on each hotel.
 
+### Seasonality Analysis
+
+Before we proceed to create a forecasting model. We will try to gain more insight regarding the customer behaviour by looking at the seasonality of the demand. Since we have too many series, we will only explore the most lucrative market segment, that is the segment of *online TA*. We will look at the behaviour for both the city hotel and the resort hotel.
+
+#### Weekly Seasonality
+
+First, we will look at the weekly seasonality. The weekly seasonality will help us to understand when does people more frequently do check in? Our common sense will tell us that perhaps weekend should be the one where people start to check in. However, weekly seasonality may have a weak strength since people are not regularly go to vacation or rent a hotel.
+
+The following figures is the weekly seasonality of the online TA segment for the city hotel. It has a negative seasonality on the weekend (Saturday and Sunday) and has a high positive seasonality in Tuesday. Thus, the hotel is more likely to have less visitor on the weekend, perhaps because the hotel is not designed to be a vacation hotel and more of a business or transit hotel.
+
+```{r}
+city_weekly <- hotel_agg_city %>% 
+  filter(market_segment == "Online TA") %>% 
+  ts(frequency = 7) %>% 
+  decompose()
+
+city_weekly$seasonal %>% 
+  matrix(ncol = 7, byrow = T) %>%
+  t() %>% 
+  as.data.frame() %>% 
+  select(V1) %>% 
+  mutate(day = wday(head(hotel_agg_city %>% filter(market_segment == "Online TA") %>% pull(arrival_date) , 7), label = T)) %>% 
+  ggplot(aes(day, V1, fill = V1)) +
+  geom_col(show.legend = F) +
+  geom_hline(yintercept = 0 ) +
+  labs(x = NULL, y = "seasonality", title = "Weekly Seasonality of City Hotel, Online TA Segment ") +
+  scale_fill_gradient2(low = "firebrick4", mid = "skyblue", high = "dodgerblue4") +
+  theme_pander()
+```
+
+Next, we will look at the weekly seasonality of the Online TA segment of the Resort Hotel as well.
+
+```{r}
+resort_weekly <- hotel_agg_resort %>% 
+  filter(market_segment == "Online TA") %>% 
+  ts(frequency = 7) %>% 
+  decompose()
+
+resort_weekly$seasonal %>% 
+  matrix(ncol = 7, byrow = T) %>%
+  t() %>% 
+  as.data.frame() %>% 
+  select(V1) %>% 
+  mutate(day = wday(head(hotel_agg_resort %>% filter(market_segment == "Online TA") %>% pull(arrival_date) , 7), label = T)) %>% 
+  ggplot(aes(day, V1, fill = V1)) +
+  geom_col(show.legend = F) +
+  geom_hline(yintercept = 0 ) +
+  labs(x = NULL, y = "seasonality", title = "Weekly Seasonality of Resort Hotel, Online TA Segment ") +
+  scale_fill_gradient2(low = "firebrick4", mid = "skyblue", high = "dodgerblue4") +
+  theme_pander()
+```
+
+The customer behaviour is quite the same, with strong positive seasonality happened during Wednesday and negative seasonality during Sunday. It is natural that the number of arrival is dropping during Sunday, since people will go back to their and home do the ordinary activities on Monday. The peak seasonality in Wednesday may signal that people want to spent more time for the upcoming weekend.
+
+#### Monthly Seasonality
+
+We will also check the monthly seasonality and see at what month does it reach its highest and lowest point. The first one is the city hotel.
+
+```{r}
+city_monthly <- hotel_agg_city %>% 
+  filter(market_segment == "Online TA") %>% 
+  mutate(date = floor_date(arrival_date, "month")) %>% 
+  group_by(date) %>% 
+  summarise(demand = sum(demand)) %>% 
+  ungroup() 
+
+monthly_ts <- ts(city_monthly,frequency = 12) %>% 
+  decompose()
+
+monthly_ts$seasonal %>% 
+  matrix(ncol = 12, byrow = T) %>%
+  t() %>% 
+  as.data.frame() %>% 
+  select(V1) %>% 
+  mutate(month = month(head(city_monthly$date, 12), label = T)) %>% 
+  ggplot(aes(month, V1, fill = V1)) +
+  geom_col(show.legend = F) +
+  geom_hline(yintercept = 0 ) +
+  labs(x = NULL, y = "seasonality", title = "Monthly Seasonality of City Hotel, Online TA Segment ") +
+  scale_fill_gradient2(low = "firebrick4", mid = "skyblue", high = "dodgerblue4") +
+  theme_pander()
+```
+
+Based on the graph, the high and positive seasonality happens on June and October. This may relate to the school holiday or another national event such as the National Day at Spain at the given time. The highest negative seasonality happens in March.
+
+The next one is the online TA segment in Resort Hotel. The seasonality reach its highest point during October and same with the city hotel, it reach the lowest point on March.
+
+```{r}
+resort_monthly <- hotel_agg_resort %>% 
+  filter(market_segment == "Online TA") %>% 
+  mutate(date = floor_date(arrival_date, "month")) %>% 
+  group_by(date) %>% 
+  summarise(demand = sum(demand)) %>% 
+  ungroup() 
+
+monthly_ts <- ts(resort_monthly,frequency = 12) %>% 
+  decompose()
+
+monthly_ts$seasonal %>% 
+  matrix(ncol = 12, byrow = T) %>%
+  t() %>% 
+  as.data.frame() %>% 
+  select(V1) %>% 
+  mutate(month = month(head(resort_monthly$date, 12), label = T)) %>% 
+  ggplot(aes(month, V1, fill = V1)) +
+  geom_col(show.legend = F) +
+  geom_hline(yintercept = 0 ) +
+  labs(x = NULL, y = "seasonality", title = "Monthly Seasonality of resort Hotel, Online TA Segment ") +
+  scale_fill_gradient2(low = "firebrick4", mid = "skyblue", high = "dodgerblue4") +
+  theme_pander()
+```
+
+For the next sections, we will focus on the forecasting of the demand using various machine learning methods.
+
 ## Cross-Validation
 
 We will split the data into training dataset and testing dataset, with testing dataset consists of the last 30 days from the full dataset.
@@ -270,7 +387,7 @@ hotel_test <- hotel_pad %>%
   slice( -(n_data-30:n_data) )
 ```
 
-## Time Series Specification
+## Forecasting Methods
 
 Since we have 6 series to be forecasted, manually fitting and tuning the model will take a long time. We will use `purrr` to efficiently fitting and evaluating the model in order to get the best model for each series based on the *Mean Absolute Error (MAE)* values. We don't use **Mean Absolute Percentage Error** because it did not perform really well when the actual data has or close to zero value, despite being easier to interpret.
 
@@ -292,7 +409,47 @@ test_list <- hotel_test %>%
 head(train_list)
 ```
 
-The column `data` consists of a list of the demand for each series. The next step is to specify the seasonal period for the series. We will try several seasonal period, including:
+The column `data` consists of a list of the demand for each series. 
+
+### Preprocessing Specification
+
+We will try several preprocess approach since there is a possibility that transformed data are performing better than the original scale. We will use the following treatment:
+
+* No data transformation
+* Squared value
+* Scaled value
+
+```{r}
+recipe_spec <- list(
+  normal_spec = function(x) x,
+  squared_spec = function(x) sqrt(x),
+  scale_spec = function(x) scale(x)
+) %>% 
+  enframe(name = "preprocess_name", value = "preprocess_spec")
+
+# reverse function to scale back
+reverse_spec <- list(
+  normal_spec = function(x, y) {
+    y <- y
+    return(x)
+    },
+  squared_spec = function(x, y) {
+    y <- y
+    return(x^2)
+    },
+  scale_spec = function(x, y) DMwR::unscale(vals = x, norm.data = y)
+) %>% 
+  enframe(name = "reverse_name", value = "reverse_spec")
+
+# joint the preprocess and the scale-back function
+recipe_spec <- recipe_spec %>% 
+  bind_cols(reverse_spec)
+```
+
+
+### Seasonality Specification
+
+The next step is to specify the seasonal period for the series. We will try several seasonal period, including:
 
 - weekly seasonality 
 - monthly seasonality 
@@ -309,50 +466,97 @@ seasonal_forecast <- list(
   enframe(name = "season_name", value = "season_spec")
 ```
 
+
+### Impute Outlier 
+
+```{r}
+outlier_spec <- list(
+  normal_spec = function(x) x,
+  out_spec = function(x){
+    outlier_place <- tsoutliers(x)
+    x[outlier_place$index] <- outlier_place$replacement
+    return(x)
+  }
+) %>% 
+  enframe(name = "outlier_name", value = "out_spec")
+
+```
+
+### Model Specification
+
 Next, we will specify the model the data will be fit into. The model includes:
 
-- Holt-Winters
 - ARIMA
 - STL + ETS model
 - STL + ARIMA
 
-Below is the combination for each specification on each series. For 6 different series, we will have 4 different seasonality specification and 4 different models. Therefore, we will 96 different combinations. We will choose the best model based on the MAE value on the testing dataset.
-
 ```{r}
 method_forecast <- list(
-  holt_winter = function(x) HoltWinters(x),
   arima  = function(x) auto.arima(x),
   stl_ets = function(x) stlm(x, method = "ets"),
   stl_arima = function(x) stlm(x, method = "arima")
 ) %>% 
   enframe(name = "model_name", value = "model_spec")
+```
 
+### Model Fitting
+
+Below is the combination for each specification on each series. For 6 different series, we will have 4 different seasonality specification and 4 different models. Therefore, we will 96 different combinations. We will choose the best model based on the MAE value on the testing dataset.
+
+```{r}
 # combine the data with the specification
-train_crossing <- crossing(train_list, seasonal_forecast, method_forecast)
+train_crossing <- crossing(train_list, recipe_spec, seasonal_forecast, outlier_spec, method_forecast )
 
-test_crossing <- crossing(test_list, seasonal_forecast, method_forecast)
+test_crossing <- crossing(test_list, recipe_spec, seasonal_forecast, outlier_spec, method_forecast)
 
-train_crossing
+train_crossing 
 ```
 
 Below is the result for our modeling process.
 
 ```{r warning= F}
 # model fitting and evaluation
-forecast_map <- map2(.x = train_crossing$data, 
-                     .y = train_crossing$season_spec,
-                     .f =  ~exec(.y,.x)) %>% 
+transformed_data <- map2(.x = train_crossing$data,
+     .y = train_crossing$preprocess_spec,
+     .f = ~exec( .y, .x))
+```
+
+
+```{r warning= F, eval=FALSE}
+# fitting and forecasting
+forecast_map <- transformed_data %>% 
+  map2(.y = train_crossing$season_spec,
+       .f = ~exec(.y, .x)) %>% 
+  map2(.y = train_crossing$out_spec,
+       .f = ~exec(.y, .x)) %>% 
   map2(.y = train_crossing$model_spec,
        .f =  ~exec(.y,.x)) %>% 
-  map(forecast, h = 30) %>% 
-  map2(.y = test_crossing$data, 
-       .f = ~yardstick::mae_vec(.x$mean %>% as.numeric(), .y$demand))
+  map(forecast, h = 30) %>%  
+  map(~pluck(.x, "mean")) %>% 
+  map(as.numeric)
+```
 
+
+```{r warning= F}
+# read recorded result
+forecast_map <- read_rds("forecast_map.rds")
+
+# scale-back the data
+forecast_trans <- list()
+for (i in 1:length(forecast_map)) {
+  forecast_trans[[i]] <- train_crossing$reverse_spec[[i]]( x = forecast_map[[i]], y = transformed_data[[i]])
+}
+
+# calculate MAE
+mae_list <- forecast_trans %>% 
+  map2(.y = test_crossing$data, 
+       .f = ~yardstick::mae_vec(.x %>% as.numeric(), .y$demand))
+
+# show result
 train_crossing %>% 
   separate(series, c("hotel", "market_segment"), sep = "_") %>% 
   select_if(is.character) %>% 
-  bind_cols(mae = forecast_map %>% as.numeric()) %>%
-  arrange(mae)
+  bind_cols(mae = mae_list %>% as.numeric())
 ```
 
 Below is the best configuration for each series. To interpret the MAE values, we need to consider the range of the data, shown as the `range_min` and `range_max` of the data.
@@ -361,48 +565,98 @@ Below is the best configuration for each series. To interpret the MAE values, we
 # best configuration for each series
 best_adjust <- train_crossing %>% 
   separate(series, c("hotel", "market_segment"), sep = "_") %>% 
-  bind_cols(mae = forecast_map %>% as.numeric()) %>%
+  bind_cols(mae = mae_list %>% as.numeric()) %>%
   group_by(hotel, market_segment) %>% 
   slice(1) %>% 
   arrange(mae)
 
 # show the result
-map(train_list$data, range) %>% 
-  unlist() %>% 
-  matrix(ncol = 2,byrow = T) %>% 
-  as.data.frame() %>% 
-  `names<-`(c("range_min", "range_max")) %>% 
-  bind_cols(train_list) %>% 
-  select_if(~is.list(.) == F) %>% 
+metric_crossing <- train_list %>% crossing(list(mean = mean, std_dev = sd) %>% enframe(name = "type", value = "metric"))
+
+metric_crossing %>% 
+  bind_cols(value = map2(.x = metric_crossing$data, 
+                         .y = metric_crossing$metric, 
+                         .f = ~exec(.y, unlist(.x))) %>% unlist() 
+            ) %>% 
+  select(series, type, value) %>% 
+  pivot_wider(names_from = type, values_from = value) %>% 
   separate(series, c("hotel", "market_segment"), sep = "_") %>% 
   left_join(best_adjust) %>% 
   select_if(~is.list(.) == F) %>% 
-  select(hotel, market_segment, season_name, model_name, everything())
+  select(-reverse_name) %>% 
+  select(hotel, market_segment, mae, mean, std_dev, everything()) %>% 
+  arrange(mae)
+  
 ```
 
-Since we don't have much data, only two years of transactions, the model performance may not perform so well. However, judging from the MAE value, the performance is quite acceptable, with most of the error values are less than 10% of the range value. The best model from the series is the ARIMA model for City Hotel and Offline TA segment. 
+Since we don't have much data, only two years of transactions, the model performance may not perform so well. However, judging from the MAE value, the performance is quite acceptable, with most of the error values are less than the value of one standard deviation. The best model from the series is the ARIMA model for City Hotel and Offline TA segment. 
 
-If you wish to get the model or the forecasting result, just re-run the former steps using only the best adjustment. Here is one of the forecasting result.
+If you wish to get the model or the forecasting result, just re-run the former steps using only the best adjustment. Here is one of the forecasting result for the Online TA segment of the city hotel. The actual demand is still inside the forecasting interval value.
 
 ```{r}
-forecast_map <- map2(.x = best_adjust$data, 
+model_best <- map2(.x = best_adjust$data, 
                      .y = best_adjust$season_spec,
                      .f =  ~exec(.y,.x)) %>% 
   map2(.y = best_adjust$model_spec,
-       .f =  ~exec(.y,.x)) %>% 
-  map(forecast, h = 30)
+       .f =  ~exec(.y,.x))
 
-data_test <- test_list$data[[2]] %>% ts(start = 3.090411, frequency = 365)
+data_test <- test_list$data[[3]] %>% ts(start = 3.090411, frequency = 365)
 
-forecast_map[[2]] %>% 
+model_best[[6]] %>%
+  forecast(h = 30 ) %>% 
   autoplot() +
   autolayer(data_test, series = "Data Test") +
   scale_color_manual(values = "firebrick") +
-  labs(subtitle = "City Hotel, Offline TA/TO Segment",
-       x = "Demand") +
+  labs(subtitle = "City Hotel, Online TA",
+       y = "Demand", x  = NULL) +
   theme_pander() +
+  scale_x_continuous(breaks = 1:3, labels = 2015:2017) +
   theme(legend.position = "none")
 ```
+
+## Model Assumption Checking
+
+### Autocorrelation
+
+The autocorrelation can be checked using the Ljung-Box test. If there are correlations between residuals, then there is information left in the residuals which should be used in computing forecasts.
+
+```{r}
+best_adjust %>% 
+  select(hotel, market_segment, model_name) %>% 
+  bind_cols( 
+      map(model_best, ~Box.test(.x$residuals, type = "Lj")) %>% 
+  unlist() %>% 
+  matrix(ncol = 5, byrow = T) %>% 
+  as.data.frame() %>% 
+  select(4:3) %>% 
+  rename(p_value = V3, test = V4) %>% 
+  mutate(p_value = p_value %>% 
+           as.character() %>% 
+           as.numeric() %>% 
+           round(4)) 
+  )
+```
+
+The results suggests that all of our models don't have any autocorrelation based on the non-significant p-value.
+
+### Normality
+
+We will also check if the residuals for each model is normally distributed using Shapiro-Wilk Test. If the residuals are not normally distributed, it will lead to a biased parameter and less optimal forecast. This is also indicate that we can still tweak our model to get a better performance.
+
+```{r}
+best_adjust %>% 
+  select(hotel, market_segment, model_name) %>% 
+  bind_cols( 
+      map(model_best, ~shapiro.test(.x$residuals)) %>% 
+        unlist() %>% 
+        matrix(ncol = 4, byrow = T) %>% 
+        as.data.frame() %>% 
+        select(3:2) %>% 
+        rename(p_value = V2, test = V3)
+  )
+```
+
+Based on the result, all of our model didn't fulfill the normality assumption for the residuals. This suggest that we can improve the model further in order to get better performance. 
 
 # Conclusion
 
