@@ -559,7 +559,7 @@ train_crossing %>%
   bind_cols(mae = mae_list %>% as.numeric())
 ```
 
-Below is the best configuration for each series. To interpret the MAE values, we need to consider the range of the data, shown as the `range_min` and `range_max` of the data.
+Below is the best configuration for each series. To interpret the MAE values, we need to consider the range of the data, shown as the standar deviation of the data.
 
 ```{r message=FALSE}
 # best configuration for each series
@@ -567,8 +567,8 @@ best_adjust <- train_crossing %>%
   separate(series, c("hotel", "market_segment"), sep = "_") %>% 
   bind_cols(mae = mae_list %>% as.numeric()) %>%
   group_by(hotel, market_segment) %>% 
-  slice(1) %>% 
-  arrange(mae)
+  arrange(mae) %>% 
+  slice(1) 
 
 # show the result
 metric_crossing <- train_list %>% crossing(list(mean = mean, std_dev = sd) %>% enframe(name = "type", value = "metric"))
@@ -591,18 +591,34 @@ metric_crossing %>%
 
 Since we don't have much data, only two years of transactions, the model performance may not perform so well. However, judging from the MAE value, the performance is quite acceptable, with most of the error values are less than the value of one standard deviation. The best model from the series is the ARIMA model for City Hotel and Offline TA segment. 
 
-If you wish to get the model or the forecasting result, just re-run the former steps using only the best adjustment. Here is one of the forecasting result for the Online TA segment of the city hotel. The actual demand is still inside the forecasting interval value.
+If you wish to get the model or the forecasting result, just re-run the former steps using only the best adjustment. Here is one of the forecasting result for the Online TA segments. The actual demand is still inside the forecasting interval value.
 
-```{r}
+```{r }
 model_best <- map2(.x = best_adjust$data, 
                      .y = best_adjust$season_spec,
                      .f =  ~exec(.y,.x)) %>% 
   map2(.y = best_adjust$model_spec,
        .f =  ~exec(.y,.x))
 
-data_test <- test_list$data[[3]] %>% ts(start = 3.090411, frequency = 365)
+data_test <- test_list$data[[6]] %>% msts(start = 28.25, seasonal.periods =  c(7, 7*4))
 
 model_best[[6]] %>%
+  forecast(h = 30 ) %>%  
+  autoplot() +
+  autolayer(data_test, series = "Data Test") +
+  scale_color_manual(values = "firebrick") +
+  labs(subtitle = "Resort Hotel, Online TA",
+       y = "Demand", x  = NULL) +
+  theme_pander() +
+  scale_x_continuous(limits = c(25, 30), 
+                     labels = as.Date.numeric(25:30*28-28, origin = range(hotel$arrival_date)[1])) +
+  theme(legend.position = "none")
+```
+
+```{r}
+data_test <- test_list$data[[3]] %>% ts(start = 110, frequency = 7)
+
+model_best[[3]] %>%
   forecast(h = 30 ) %>% 
   autoplot() +
   autolayer(data_test, series = "Data Test") +
@@ -610,7 +626,24 @@ model_best[[6]] %>%
   labs(subtitle = "City Hotel, Online TA",
        y = "Demand", x  = NULL) +
   theme_pander() +
-  scale_x_continuous(breaks = 1:3, labels = 2015:2017) +
+  scale_x_continuous(limits = c(100, 115), 
+                     labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
+  theme(legend.position = "none")
+```
+
+```{r}
+data_test <- test_list$data[[5]] %>% ts(start = 110, frequency = 7)
+
+model_best[[5]] %>%
+  forecast(h = 30 ) %>% 
+  autoplot() +
+  autolayer(data_test, series = "Data Test") +
+  scale_color_manual(values = "firebrick") +
+  labs(subtitle = "Resort Hotel, Offline TA/TO",
+       y = "Demand", x  = NULL) +
+  theme_pander() +
+  scale_x_continuous(limits = c(100, 115), 
+                     labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
   theme(legend.position = "none")
 ```
 
