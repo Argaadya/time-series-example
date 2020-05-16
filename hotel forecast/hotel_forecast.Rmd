@@ -469,6 +469,8 @@ seasonal_forecast <- list(
 
 ### Impute Outlier 
 
+We will also try to preprocess the data by whether an outlier should be replaced or not. If the outlier is replaced, we will identify the outlier and estimate the replacement using the `tsoutliers` function.
+
 ```{r}
 outlier_spec <- list(
   normal_spec = function(x) x,
@@ -501,7 +503,7 @@ method_forecast <- list(
 
 ### Model Fitting
 
-Below is the combination for each specification on each series. For 6 different series, we will have 4 different seasonality specification and 4 different models. Therefore, we will 96 different combinations. We will choose the best model based on the MAE value on the testing dataset.
+Below is the combination for each specification on each series. For 6 different series, we will have 4 different seasonality specification and 3 different models. Therefore, we will 432 different combinations. We will choose the best model based on the RMSE and MAE value on the testing dataset.
 
 ```{r}
 # combine the data with the specification

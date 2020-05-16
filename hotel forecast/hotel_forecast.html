@@ -3354,6 +3354,7 @@ div.tocify {
 </div>
 <div id="impute-outlier" class="section level3">
 <h3>Impute Outlier</h3>
+<p>We will also try to preprocess the data by whether an outlier should be replaced or not. If the outlier is replaced, we will identify the outlier and estimate the replacement using the <code>tsoutliers</code> function.</p>
 <div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb17-1" title="1">outlier_spec &lt;-<span class="st"> </span><span class="kw">list</span>(</a>
 <a class="sourceLine" id="cb17-2" title="2">  <span class="dt">normal_spec =</span> <span class="cf">function</span>(x) x,</a>
 <a class="sourceLine" id="cb17-3" title="3">  <span class="dt">out_spec =</span> <span class="cf">function</span>(x){</a>
@@ -3381,7 +3382,7 @@ div.tocify {
 </div>
 <div id="model-fitting" class="section level3">
 <h3>Model Fitting</h3>
-<p>Below is the combination for each specification on each series. For 6 different series, we will have 4 different seasonality specification and 4 different models. Therefore, we will 96 different combinations. We will choose the best model based on the MAE value on the testing dataset.</p>
+<p>Below is the combination for each specification on each series. For 6 different series, we will have 4 different seasonality specification and 3 different models. Therefore, we will 432 different combinations. We will choose the best model based on the RMSE and MAE value on the testing dataset.</p>
 <div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb19-1" title="1"><span class="co"># combine the data with the specification</span></a>
 <a class="sourceLine" id="cb19-2" title="2">train_crossing &lt;-<span class="st"> </span><span class="kw">crossing</span>(train_list, recipe_spec, seasonal_forecast, outlier_spec, method_forecast )</a>
 <a class="sourceLine" id="cb19-3" title="3"></a>
