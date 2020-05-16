@@ -389,7 +389,7 @@ hotel_test <- hotel_pad %>%
 
 ## Forecasting Methods
 
-Since we have 6 series to be forecasted, manually fitting and tuning the model will take a long time. We will use `purrr` to efficiently fitting and evaluating the model in order to get the best model for each series based on the *Mean Absolute Error (MAE)* values. We don't use **Mean Absolute Percentage Error** because it did not perform really well when the actual data has or close to zero value, despite being easier to interpret.
+Since we have 6 series to forecast, manually fitting and tuning the model will be tedious and take a long time. We will use `purrr` to efficiently fitting and evaluating the model in order to get the best model for each series based on the *Mean Absolute Error (MAE)* and **Root Mean Squared Error (RMSE)** values. MAE is chosen due to it's interpretability while RMSE is chosen because it is sensitive to large errors. We don't use **Mean Absolute Percentage Error** because it did not perform really well when the actual data has or close to zero value, despite being easier to interpret.
 
 First, we will nest the dataset, making our data into a list of 6 separate series.
 
@@ -512,7 +512,7 @@ test_crossing <- crossing(test_list, recipe_spec, seasonal_forecast, outlier_spe
 train_crossing 
 ```
 
-Below is the result for our modeling process.
+The following code produce the transformation process for the data before fitted into model.
 
 ```{r warning= F}
 # model fitting and evaluation
@@ -521,6 +521,7 @@ transformed_data <- map2(.x = train_crossing$data,
      .f = ~exec( .y, .x))
 ```
 
+The following code do all process from transforming data into time series, fitting them into the model and forecast demands for the next 30 days.
 
 ```{r warning= F, eval=FALSE}
 # fitting and forecasting
@@ -537,6 +538,10 @@ forecast_map <- transformed_data %>%
 ```
 
 
+### Forecasting Result {.tabset}
+
+Below is the result for our modeling process. We use **MAE** and **RMSE** to measures and compares the performance of each model.
+
 ```{r warning= F}
 # read recorded result
 forecast_map <- read_rds("forecast_map.rds")
@@ -552,22 +557,29 @@ mae_list <- forecast_trans %>%
   map2(.y = test_crossing$data, 
        .f = ~yardstick::mae_vec(.x %>% as.numeric(), .y$demand))
 
+rmse_list <- forecast_trans %>% 
+  map2(.y = test_crossing$data, 
+       .f = ~yardstick::rmse_vec(.x %>% as.numeric(), .y$demand))
+
 # show result
 train_crossing %>% 
   separate(series, c("hotel", "market_segment"), sep = "_") %>% 
   select_if(is.character) %>% 
-  bind_cols(mae = mae_list %>% as.numeric())
+  bind_cols(mae = mae_list %>% as.numeric()) %>% 
+  bind_cols(rmse = rmse_list %>% as.numeric()) %>% 
+  select(hotel, market_segment, mae, rmse, everything())
 ```
 
-Below is the best configuration for each series. To interpret the MAE values, we need to consider the range of the data, shown as the standar deviation of the data.
+Below is the best configuration for each series based on the lowest RMSE, since RMSE give more penality towards large error. To interpret the MAE values, we need to consider the range of the data, shown as the standar deviation of the data. 
 
 ```{r message=FALSE}
 # best configuration for each series
 best_adjust <- train_crossing %>% 
   separate(series, c("hotel", "market_segment"), sep = "_") %>% 
   bind_cols(mae = mae_list %>% as.numeric()) %>%
+  bind_cols(rmse = rmse_list %>% as.numeric()) %>% 
   group_by(hotel, market_segment) %>% 
-  arrange(mae) %>% 
+  arrange(rmse) %>% 
   slice(1) 
 
 # show the result
@@ -584,23 +596,24 @@ metric_crossing %>%
   left_join(best_adjust) %>% 
   select_if(~is.list(.) == F) %>% 
   select(-reverse_name) %>% 
-  select(hotel, market_segment, mae, mean, std_dev, everything()) %>% 
-  arrange(mae)
-  
+  select(hotel, market_segment, mae, rmse,  mean, std_dev, everything()) %>% 
+  arrange(rmse)
 ```
 
-Since we don't have much data, only two years of transactions, the model performance may not perform so well. However, judging from the MAE value, the performance is quite acceptable, with most of the error values are less than the value of one standard deviation. The best model from the series is the ARIMA model for City Hotel and Offline TA segment. 
+Since we don't have much data, only two years of transactions, the model performance may not perform so well. However, judging from the MAE value, the performance is quite acceptable, with most of the error values are less than the value of one standard deviation. 
 
-If you wish to get the model or the forecasting result, just re-run the former steps using only the best adjustment. Here is one of the forecasting result for the Online TA segments. The actual demand is still inside the forecasting interval value.
+Below is the forecasting result for each series. The red line indicate the actual demand value while the blue line indicate the forecast value. The blue area represent area with 80% prediction interval while the light blue are represent the 95% prediction interval. Most of the actual demand is still inside the forecasting intervals.
 
-```{r }
+#### Resort Hotel, Online TA
+
+```{r message=FALSE, warning=FALSE}
 model_best <- map2(.x = best_adjust$data, 
                      .y = best_adjust$season_spec,
                      .f =  ~exec(.y,.x)) %>% 
   map2(.y = best_adjust$model_spec,
        .f =  ~exec(.y,.x))
 
-data_test <- test_list$data[[6]] %>% msts(start = 28.25, seasonal.periods =  c(7, 7*4))
+data_test <- test_list$data[[6]] %>% msts(start = 110, seasonal.periods =  7)
 
 model_best[[6]] %>%
   forecast(h = 30 ) %>%  
@@ -610,12 +623,14 @@ model_best[[6]] %>%
   labs(subtitle = "Resort Hotel, Online TA",
        y = "Demand", x  = NULL) +
   theme_pander() +
-  scale_x_continuous(limits = c(25, 30), 
-                     labels = as.Date.numeric(25:30*28-28, origin = range(hotel$arrival_date)[1])) +
+  scale_x_continuous(limits = c(100, 115) ,
+                     labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
   theme(legend.position = "none")
 ```
 
-```{r}
+#### City Hotel, Online TA
+
+```{r warning=FALSE, message=FALSE}
 data_test <- test_list$data[[3]] %>% ts(start = 110, frequency = 7)
 
 model_best[[3]] %>%
@@ -631,7 +646,9 @@ model_best[[3]] %>%
   theme(legend.position = "none")
 ```
 
-```{r}
+#### Resort Hotel, Offline TA/TO
+
+```{r warning=FALSE, message=FALSE}
 data_test <- test_list$data[[5]] %>% ts(start = 110, frequency = 7)
 
 model_best[[5]] %>%
@@ -647,6 +664,60 @@ model_best[[5]] %>%
   theme(legend.position = "none")
 ```
 
+#### City Hotel, Offline TA/TO
+
+```{r warning=FALSE, message=FALSE}
+data_test <- test_list$data[[2]] %>% ts(start = 110, frequency = 7)
+
+model_best[[2]] %>%
+  forecast(h = 30 ) %>% 
+  autoplot() +
+  autolayer(data_test, series = "Data Test") +
+  scale_color_manual(values = "firebrick") +
+  labs(subtitle = "City Hotel, Offline TA/TO",
+       y = "Demand", x  = NULL) +
+  theme_pander() +
+  scale_x_continuous(limits = c(100, 115), 
+                     labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
+  theme(legend.position = "none")
+```
+
+#### Resort Hotel, Direct
+
+```{r warning=FALSE, message=FALSE}
+data_test <- test_list$data[[4]] %>% ts(start = 110, frequency = 7)
+
+model_best[[4]] %>%
+  forecast(h = 30 ) %>% 
+  autoplot() +
+  autolayer(data_test, series = "Data Test") +
+  scale_color_manual(values = "firebrick") +
+  labs(subtitle = "Resort Hotel, Direct",
+       y = "Demand", x  = NULL) +
+  theme_pander() +
+  scale_x_continuous(limits = c(100, 115), 
+                     labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
+  theme(legend.position = "none")
+```
+
+#### City Hotel, Direct
+
+```{r warning=FALSE, message=FALSE}
+data_test <- test_list$data[[1]] %>% ts(start = 110, frequency = 7)
+
+model_best[[1]] %>%
+  forecast(h = 30 ) %>% 
+  autoplot() +
+  autolayer(data_test, series = "Data Test") +
+  scale_color_manual(values = "firebrick") +
+  labs(subtitle = "City Hotel, Direct",
+       y = "Demand", x  = NULL) +
+  theme_pander() +
+  scale_x_continuous(limits = c(100, 115), 
+                     labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
+  theme(legend.position = "none")
+```
+
 ## Model Assumption Checking
 
 ### Autocorrelation
@@ -655,7 +726,7 @@ The autocorrelation can be checked using the Ljung-Box test. If there are correl
 
 ```{r}
 best_adjust %>% 
-  select(hotel, market_segment, model_name) %>% 
+  select(hotel, market_segment) %>% 
   bind_cols( 
       map(model_best, ~Box.test(.x$residuals, type = "Lj")) %>% 
   unlist() %>% 
@@ -678,7 +749,12 @@ We will also check if the residuals for each model is normally distributed using
 
 ```{r}
 best_adjust %>% 
-  select(hotel, market_segment, model_name) %>% 
+  select(hotel, market_segment) %>% 
+  bind_cols(
+    mean_error = map(model_best, ~mean(.$residuals)) %>% 
+      as.numeric() %>% 
+      round(5)
+  ) %>% 
   bind_cols( 
       map(model_best, ~shapiro.test(.x$residuals)) %>% 
         unlist() %>% 
@@ -686,10 +762,14 @@ best_adjust %>%
         as.data.frame() %>% 
         select(3:2) %>% 
         rename(p_value = V2, test = V3)
-  )
+  ) %>% 
+  mutate(p_value = p_value %>% 
+           as.character() %>% 
+           as.numeric() %>% 
+           number(accuracy = 0.00001))
 ```
 
-Based on the result, all of our model didn't fulfill the normality assumption for the residuals. This suggest that we can improve the model further in order to get better performance. 
+Based on the result, all of our model didn't fulfill the normality assumption for the residuals. The positive mean of error signify that the model is underestimate the forecast while negative mean error means the model is overestimate. They might be influenced by the presence of an outlier value such as a really high demand. This suggest that we can improve the model further in order to get better performance. 
 
 # Conclusion
 
