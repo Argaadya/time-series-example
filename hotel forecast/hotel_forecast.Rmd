@@ -418,12 +418,14 @@ We will try several preprocess approach since there is a possibility that transf
 * No data transformation
 * Squared value
 * Scaled value
+* Log transformation
 
 ```{r}
 recipe_spec <- list(
   normal_spec = function(x) x,
   squared_spec = function(x) sqrt(x),
-  scale_spec = function(x) scale(x)
+  scale_spec = function(x) scale(x),
+  log_spec = function(x) log(x+1)
 ) %>% 
   enframe(name = "preprocess_name", value = "preprocess_spec")
 
@@ -437,7 +439,11 @@ reverse_spec <- list(
     y <- y
     return(x^2)
     },
-  scale_spec = function(x, y) DMwR::unscale(vals = x, norm.data = y)
+  scale_spec = function(x, y) DMwR::unscale(vals = x, norm.data = y),
+  log_spec = function(x,y) {
+    y <- y
+    return(exp(x)-1)
+  }
 ) %>% 
   enframe(name = "reverse_name", value = "reverse_spec")
 
@@ -453,14 +459,16 @@ The next step is to specify the seasonal period for the series. We will try seve
 
 - weekly seasonality 
 - monthly seasonality 
-- weekly and monthly seasonality (multi-seasonal)
 - annual seasonality
+- weekly and monthly seasonality (multi-seasonal)
+- weekly and annual seasonality (multi-seasonal)
 
 ```{r}
 seasonal_forecast <- list(
   weekly = function(x) ts(x, frequency = 7),
   monthly = function(x) ts(x, frequency = 7*4),
   weekly_monthly = function(x) msts(x, seasonal.periods = c(7, 7*4)),
+  weekly_annual = function(x) msts(x, seasonal.periods = c(7, 365)),
   annual = function(x) ts(x, frequency = 365)
 ) %>% 
   enframe(name = "season_name", value = "season_spec")
@@ -469,7 +477,7 @@ seasonal_forecast <- list(
 
 ### Impute Outlier 
 
-We will also try to preprocess the data by whether an outlier should be replaced or not. If the outlier is replaced, we will identify the outlier and estimate the replacement using the `tsoutliers` function.
+We will also try to preprocess the data by whether an outlier should be replaced or not. If the outlier is replaced, we will identify the outlier and estimate the replacement using the `tsoutliers` function. Residuals are identified by fitting a loess curve for non-seasonal data and via a periodic STL decomposition for seasonal data. 
 
 ```{r}
 outlier_spec <- list(
@@ -503,7 +511,7 @@ method_forecast <- list(
 
 ### Model Fitting
 
-Below is the combination for each specification on each series. For 6 different series, we will have 4 different seasonality specification and 3 different models. Therefore, we will 432 different combinations. We will choose the best model based on the RMSE and MAE value on the testing dataset.
+Below is the combination for each specification on each series. For 6 different series, we will have 5 different seasonality specification, 3 different models and other specifications. Therefore, we will 540 different combinations. We will choose the best model based on the RMSE and MAE value on the testing dataset.
 
 ```{r}
 # combine the data with the specification
@@ -538,7 +546,6 @@ forecast_map <- transformed_data %>%
   map(~pluck(.x, "mean")) %>% 
   map(as.numeric)
 ```
-
 
 ### Forecasting Result {.tabset}
 
@@ -630,6 +637,16 @@ model_best[[6]] %>%
   theme(legend.position = "none")
 ```
 
+```{r}
+model_best[[6]]$residuals %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x)) +
+  geom_density(fill = "skyblue", alpha = 0.7, color = "white") +
+  labs(x = "Residuals", y = "Density",
+       title = "Residuals Distribution") +
+  theme_pander()
+```
+
 #### City Hotel, Online TA
 
 ```{r warning=FALSE, message=FALSE}
@@ -646,6 +663,16 @@ model_best[[3]] %>%
   scale_x_continuous(limits = c(100, 115), 
                      labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
   theme(legend.position = "none")
+```
+
+```{r}
+model_best[[3]]$residuals %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x)) +
+  geom_density(fill = "skyblue", alpha = 0.7, color = "white") +
+  labs(x = "Residuals", y = "Density",
+       title = "Residuals Distribution") +
+  theme_pander()
 ```
 
 #### Resort Hotel, Offline TA/TO
@@ -666,6 +693,17 @@ model_best[[5]] %>%
   theme(legend.position = "none")
 ```
 
+
+```{r}
+model_best[[5]]$residuals %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x)) +
+  geom_density(fill = "skyblue", alpha = 0.7, color = "white") +
+  labs(x = "Residuals", y = "Density",
+       title = "Residuals Distribution") +
+  theme_pander()
+```
+
 #### City Hotel, Offline TA/TO
 
 ```{r warning=FALSE, message=FALSE}
@@ -682,6 +720,17 @@ model_best[[2]] %>%
   scale_x_continuous(limits = c(100, 115), 
                      labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
   theme(legend.position = "none")
+```
+
+
+```{r}
+model_best[[2]]$residuals %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x)) +
+  geom_density(fill = "skyblue", alpha = 0.7, color = "white") +
+  labs(x = "Residuals", y = "Density",
+       title = "Residuals Distribution") +
+  theme_pander()
 ```
 
 #### Resort Hotel, Direct
@@ -702,6 +751,17 @@ model_best[[4]] %>%
   theme(legend.position = "none")
 ```
 
+```{r}
+model_best[[4]]$residuals %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x)) +
+  geom_density(fill = "skyblue", alpha = 0.7, color = "white") +
+  labs(x = "Residuals", y = "Density",
+       title = "Residuals Distribution") +
+  theme_pander()
+```
+
+
 #### City Hotel, Direct
 
 ```{r warning=FALSE, message=FALSE}
@@ -718,6 +778,16 @@ model_best[[1]] %>%
   scale_x_continuous(limits = c(100, 115), 
                      labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
   theme(legend.position = "none")
+```
+
+```{r}
+model_best[[1]]$residuals %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x)) +
+  geom_density(fill = "skyblue", alpha = 0.7, color = "white") +
+  labs(x = "Residuals", y = "Density",
+       title = "Residuals Distribution") +
+  theme_pander()
 ```
 
 ## Model Assumption Checking
@@ -756,6 +826,11 @@ best_adjust %>%
     mean_error = map(model_best, ~mean(.$residuals)) %>% 
       as.numeric() %>% 
       round(5)
+  ) %>%
+  bind_cols(
+    median_error = map(model_best, ~median(.$residuals)) %>% 
+      as.numeric() %>% 
+      round(5)
   ) %>% 
   bind_cols( 
       map(model_best, ~shapiro.test(.x$residuals)) %>% 
@@ -765,13 +840,14 @@ best_adjust %>%
         select(3:2) %>% 
         rename(p_value = V2, test = V3)
   ) %>% 
+  rename(segment = market_segment) %>% 
   mutate(p_value = p_value %>% 
            as.character() %>% 
            as.numeric() %>% 
            number(accuracy = 0.00001))
 ```
 
-Based on the result, all of our model didn't fulfill the normality assumption for the residuals. The positive mean of error signify that the model is underestimate the forecast while negative mean error means the model is overestimate. They might be influenced by the presence of an outlier value such as a really high demand. This suggest that we can improve the model further in order to get better performance. 
+Based on the result, all of our model didn't fulfill the normality assumption for the residuals. The positive mean of error signify that the model is underestimate the forecast while negative mean error means the model is overestimate. If we look at the median of error, all of our models are underestimate on the trianing set. They might be influenced by the presence of an outlier value such as a really high demand especially on the early part of the series. This suggest that we can improve the model further in order to get better performance. 
 
 # Conclusion
 
