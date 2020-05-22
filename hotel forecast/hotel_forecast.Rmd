@@ -19,6 +19,11 @@ knitr::opts_chunk$set(echo = TRUE, fig.align = "center", warning = F, message = 
 options(scipen = 999)
 ```
 
+<style>
+body {
+text-align: justify}
+</style>
+
 # Background
 
 ```{r echo=FALSE}
@@ -51,6 +56,11 @@ library(recipes)
 
 Let's import the dataset. The data is acquired from <a href = "https://www.sciencedirect.com/science/article/pii/S2352340918315191"> **Nuno et al. (2019)** </a>. The data consists of around 119,390 booking transactions from 2 hotel: an anonymous city hotel from Lisbon and a resort hotel from Algarve. The dataset comprehend bookings due to arrive between the 1st of July of 2015 and the 31st of August 2017, including bookings that effectively arrived and bookings that were canceled. There is so much to explore from this data, but we will only focus on demand forecasting.
 
+```{r echo=FALSE, out.width="100%"}
+knitr::include_graphics("asset/map.PNG")
+```
+
+
 ```{r}
 hotel <- read.csv("hotel_bookings.csv")
 
@@ -59,7 +69,7 @@ head(hotel, 10)
 
 Data Description:
 
-* **hotel** : Hotel (H1 = Resort Hotel or H2 = City Hotel)
+* **hotel** : Hotel (Resort Hotel or City Hotel)
 * **is_canceled** : Value indicating if the booking was canceled (1) or not (0)
 * **lead_time** : Number of days that elapsed between the entering date of the booking into the PMS and the arrival date
 * **arrival_date_year** : Year of arrival date
@@ -179,7 +189,7 @@ Total ADR generated from online travel agent is the highest both in the city hot
 
 ### Time Series Analysis
 
-We want to forecast the demand of lodging for both city hotel and resort hotel. Based on the previous exploration, we will use only the data from segment online travel agent, offline travel agent and direct. We will consider both canceled and non-canceled transactions to reflect the demand.
+We want to forecast the demand of lodging for both city hotel and resort hotel. Based on the previous exploration, we will use only the data from segment online travel agent, offline travel agent and direct. **We will consider both canceled and non-canceled transactions to reflect the demand.**
 
 ```{r}
 hotel_city <- hotel %>%
@@ -252,7 +262,7 @@ hotel_pad %>%
   scale_color_manual(values = c("firebrick", "skyblue", "orange"))
 ```
 
-The behaviour for each segment is quite different, so we will forecast them separately. At this point, we will have 6 different time series to be forecasted for 3 different segments on each hotel.
+The behaviour for each segment is quite different, so we will forecast them separately. At this point, we will have 6 different time series to be forecasted for 3 different segments on each hotel. 
 
 ### Seasonality Analysis
 
@@ -306,7 +316,7 @@ resort_weekly$seasonal %>%
   theme_pander()
 ```
 
-The customer behaviour is quite the same, with strong positive seasonality happened during Wednesday and negative seasonality during Sunday. It is natural that the number of arrival is dropping during Sunday, since people will go back to their and home do the ordinary activities on Monday. The peak seasonality in Wednesday may signal that people want to spent more time for the upcoming weekend.
+The customer behaviour is quite the same, with strong positive seasonality happened during Wednesday and negative seasonality during Sunday. It is natural that the number of arrival is dropping during Sunday, since people will go back to their and home do the ordinary activities on Monday. Another reason is perhaps because Monday is the day that most of the monuments/museusms etc are closed in Portugal so if people checked in on Sunday evening the don't have much to visit during the next day. The peak seasonality in Wednesday may signal that people want to spent more time for the upcoming weekend or people just want to avoid the crowd during weekend. 
 
 #### Monthly Seasonality
 
@@ -337,8 +347,6 @@ monthly_ts$seasonal %>%
   theme_pander()
 ```
 
-Based on the graph, the high and positive seasonality happens on June and October. This may relate to the school holiday or another national event such as the National Day at Spain at the given time. The highest negative seasonality happens in March.
-
 The next one is the online TA segment in Resort Hotel. The seasonality reach its highest point during October and same with the city hotel, it reach the lowest point on March.
 
 ```{r}
@@ -366,6 +374,15 @@ monthly_ts$seasonal %>%
   theme_pander()
 ```
 
+Based on both graphs, the high and positive seasonality happens around May-June and September-October. The highest negative seasonality happens in March. Both Lisbon and Algarve are located in Portugal. According to <a href = "https://www.audleytravel.com/us/portugal/best-time-to-visit"> Audley Travels </a>, the best time to visit Portugal is in spring (March-May), when the country is in bloom and waking after the winter. You could also go in fall (between September and October) when the sun is still shining, the weather is warm, and many of the crowds have dispersed. However, the negative seasonality in March and April perhaps tell us that the weather is still too cold to travel around and people love to spend more time to go for vacation during September and October. The summer holiday of school, which is span from late June to early September, have a good influence toward the city hotel seasonality.
+
+```{r echo=FALSE, out.width="80%"}
+knitr::include_graphics("asset/algarve.jpg")
+```
+
+> September and October are two of the best months to visit Portugal. The weather is still warm and pleasant, and the temperatures are much more manageable for sightseeing or hiking. It’s also a wonderful time to visit many of Portugal’s wineries with the grape harvest in full swing. The beaches are also much quieter.
+> `r tufte::quote_footer(' Audley Travels')`
+
 For the next sections, we will focus on the forecasting of the demand using various machine learning methods.
 
 ## Cross-Validation
@@ -385,11 +402,46 @@ hotel_train <- hotel_pad %>%
 hotel_test <- hotel_pad %>% 
   group_by(hotel, market_segment) %>% 
   slice( -(n_data-30:n_data) )
+
+tail(hotel_train, 10)
 ```
 
 ## Forecasting Methods
 
-Since we have 6 series to forecast, manually fitting and tuning the model will be tedious and take a long time. We will use `purrr` to efficiently fitting and evaluating the model in order to get the best model for each series based on the *Mean Absolute Error (MAE)* and **Root Mean Squared Error (RMSE)** values. MAE is chosen due to it's interpretability while RMSE is chosen because it is sensitive to large errors. We don't use **Mean Absolute Percentage Error** because it did not perform really well when the actual data has or close to zero value, despite being easier to interpret.
+We will do forecasting for each segment of each hotel. This is done to capture the pattern of each series since they have different characteristics and doing an aggregated forecast may result in higher error. Thus, we will have 6 different series, 3 for each hotel. Since we have 6 series to forecast, manually fitting and tuning the model will be tedious and take a long time. We will use `purrr` to efficiently fitting and evaluating the model in order to get the best model for each series based on the **Mean Absolute Error (MAE)** and **Root Mean Squared Error (RMSE)** values. MAE is chosen due to it's interpretability while RMSE is chosen because it is sensitive to large errors. We don't use **Mean Absolute Percentage Error** because it did not perform really well when the actual data has or close to zero value, despite being easier to interpret.
+
+$$MAE = \frac{\Sigma_{i = 1}^{n} (y_i- \hat{y_i})}{n}$$
+
+$$RMSE = \sqrt\frac{\Sigma_{i = 1}^{n} (y_i-\hat{y_i} )^2}{n}$$
+
+Before we proceed, we will do forecasting method for the aggregated time series by combining all demand into a single series. This will function as a benchmark for the subsequent forecasting.
+
+```{r}
+train_agg <- hotel_train %>% 
+  group_by(arrival_date) %>% 
+  summarise(demand = sum(demand))
+
+test_agg <- hotel_test %>% 
+  group_by(arrival_date) %>% 
+  summarise(demand = sum(demand))
+
+head(train_agg, 10)
+```
+
+With a weekly seasonality and using ARIMA method, here is the result of the forecast on the next 30 days. The forecast give us MAE of 21, which mean that the model will have different around 21 demands compared to the actual testing dataset in average and RMSE around 26. 
+
+```{r}
+train_ts <- ts(train_agg$demand, frequency = 7)
+
+arima_agg <- auto.arima(train_ts)
+
+forecast_agg <- forecast(arima_agg, h = 30)
+
+accuracy(forecast_agg, test_agg$demand) %>% tidy() %>% 
+  rename(dataset = .rownames)
+```
+
+We will see if by separating the series will give us better forecast performance.
 
 First, we will nest the dataset, making our data into a list of 6 separate series.
 
@@ -452,7 +504,6 @@ recipe_spec <- recipe_spec %>%
   bind_cols(reverse_spec)
 ```
 
-
 ### Seasonality Specification
 
 The next step is to specify the seasonal period for the series. We will try several seasonal period, including:
@@ -473,7 +524,6 @@ seasonal_forecast <- list(
 ) %>% 
   enframe(name = "season_name", value = "season_spec")
 ```
-
 
 ### Impute Outlier 
 
@@ -609,7 +659,7 @@ metric_crossing %>%
   arrange(rmse)
 ```
 
-Since we don't have much data, only two years of transactions, the model performance may not perform so well. However, judging from the MAE value, the performance is quite acceptable, with most of the error values are less than the value of one standard deviation. 
+Since we don't have much data, only two years of transactions, the model performance may not perform so well. However, judging from the MAE value, the performance is quite acceptable, with most of the error values are less than the value of one standard deviation. Compared to the aggregated data on the first forecast which have MAE of 21, we have lower MAE value for each series, which give us an evidence that by making a separate forecasting models for each market segment will make the model more accurate.
 
 Below is the forecasting result for each series. The red line indicate the actual demand value while the blue line indicate the forecast value. The blue area represent area with 80% prediction interval while the light blue are represent the 95% prediction interval. Most of the actual demand is still inside the forecasting intervals.
 
@@ -851,4 +901,4 @@ Based on the result, all of our model didn't fulfill the normality assumption fo
 
 # Conclusion
 
-We have tried to do hotel demand forecasting using a real-world datasets with two years worth of data. We also have tried to analyze the series pattern for each hotel and segment and fit the best model for each one of them with a satisfying results. The next step perhaps is to enhance the model further either by using another time series model, incorporate predictor by the unused variables from the original dataset or transforming the data.
+This article has illustrated how R and functional programming of `purrr` can help us to do flexible forecasting for multiple time series models. We have tried to do hotel demand forecasting using a real-world datasets with two years worth of data. We also have tried to analyze the series pattern for each hotel and segment and fit the best model for each one of them with a satisfying results. The next step perhaps is to enhance the model further either by using another time series model, incorporate predictor by the unused variables from the original dataset or transforming the data.
