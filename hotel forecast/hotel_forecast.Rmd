@@ -728,7 +728,7 @@ model_best[[3]]$residuals %>%
 #### Resort Hotel, Offline TA/TO
 
 ```{r warning=FALSE, message=FALSE}
-data_test <- test_list$data[[5]] %>% ts(start = 110, frequency = 7)
+data_test <- test_list$data[[5]] %>% msts(start = 3.090411, seasonal.periods = c(7, 365))
 
 model_best[[5]] %>%
   forecast(h = 30 ) %>% 
@@ -738,11 +738,10 @@ model_best[[5]] %>%
   labs(subtitle = "Resort Hotel, Offline TA/TO",
        y = "Demand", x  = NULL) +
   theme_pander() +
-  scale_x_continuous(limits = c(100, 115), 
-                     labels = as.Date.numeric(seq(100,115,5)*7-7, origin = range(hotel$arrival_date)[1])) +
+  scale_x_continuous(limits = c(3, 3.2), 
+                     labels = as.Date.numeric(seq(3,3.2,0.05)*365-365, origin = range(hotel$arrival_date)[1])) +
   theme(legend.position = "none")
 ```
-
 
 ```{r}
 model_best[[5]]$residuals %>% 
